@@ -1,5 +1,6 @@
 ---
 # Example users list for Ansible Users playbook
+# Update the user information below and rename this file to users_list.yml prior to running the users.yml playbook
 
 # All Users should follow the same format:
 # {name: 'NAME', password: 'HASHED PASSWORD', groups: ['GROUPS'], system: no, shell: '/bin/bash'}
@@ -17,5 +18,5 @@ user_details:
 #  - {name: '$EX_USER2', password: '$HASHED_PASSWORD', groups: ['sudo'], system: no, shell: '/bin/bash'}
 
 # System users can be added below
-  - {name: 'ansible_user', password: '', groups: ['sudo'], system: yes, shell: '/bin/bash'}
   - {name: 'exporter_user', password: '', groups: [''], system: yes, shell: '/bin/false'}
+#  - {name: 'ansible_user', password: '', groups: ['sudo'], system: yes, shell: '/bin/bash'}

@@ -2,7 +2,7 @@
 - hosts: all
   become: true
   vars_files:
-    - ../secrets/users.yml
+    - users_list.yml
 
   tasks:
 # Creates user, sets password, shell, and user type
