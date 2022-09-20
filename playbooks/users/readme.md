@@ -1,4 +1,4 @@
-# CASAT Users Ansible Playbook
+# Users Ansible Playbook
 
 This playbook is for creating and updating users on our servers.
 
