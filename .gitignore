@@ -1,2 +1,4 @@
 secrets/
 hosts/
+
+users/files/jmarks.id_rsa.pub
