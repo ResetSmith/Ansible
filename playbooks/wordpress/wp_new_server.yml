@@ -1,0 +1,58 @@
+---
+- hosts: all
+  vars_files:
+    - ../secrets/users.yml
+    - ../secrets/wordpress.yml
+
+  tasks:
+# Playbook review section
+# This section's purpose is to allow users to review settings prior to running
+    - name: List new usernames to variable
+      delegate_to: localhost
+      become: true
+      lineinfile:
+        path: /tmp/users.list
+        line: "{{ item.name }}"
+        create: true
+      with_items: "{{ user_details }}"
+
+    - name: Notice message
+      run_once: true
+      debug:
+        msg: 
+          - 'This playbook is for the setup of new WordPress websites on new DigitalOcean droplets.'
+          - 'It will iterate through the setup.yml, users.yml, and wp_install.yml playbooks' 
+          - "This playbook is OK to run on multiple servers at a time."
+
+    - name: Review Playbook settings
+      delegate_to: localhost
+      run_once: true
+      debug:
+        msg:
+          - "This playbook will install MySQL and create a database called '{{ mysql_db }}'"
+          - "It will generate the MySQL 'root' user and set the password to '{{ mysql_root_password }}'"
+          - "It will setup a WordPress user for mysql called '{{ mysql_user }}' and set the password to '{{ mysql_password }}'"
+          - "It will also create the following users:"
+          - "{{ lookup('file', '/tmp/users.list') }}"
+
+    - name: Pause for review
+      run_once: true
+      pause:
+        prompt:
+          - "If any of these settings need to be updated, press 'Ctrl+C' now. Otherwise, this playbook will continue in 30 seconds"
+        seconds: 30
+
+    - name: Remove temp files
+      file:
+        path: /tmp/users.list
+        state: absent
+
+# Below is the list of playbooks that this playbook calls
+# setup.yml is the playbook for initial setup of new DigitalOcean droplets
+- import_playbook: ../setup/setup.yml
+# users.yml is the playbook for creating user accounts on our droplets
+- import_playbook: ../users/users.yml
+# wp_install is the playbook for the installation of WordPress
+- import_playbook: wp_install.yml
+
+# at the end of this playbook you will have a blank WordPress website up and running

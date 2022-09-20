@@ -1,0 +1,142 @@
+---
+- hosts: all
+  become: true
+
+  tasks:
+    - name: "Create folder for configuration files"
+      ansible.builtin.file:
+        path: /etc/metrics
+        state: directory
+        mode: 0777
+        owner: exporter
+        group: exporter
+
+    - name: "Install dependencies"
+      apt:
+        name: unzip
+        state: latest
+
+# Node exporter installation
+    - name: "Download Node Exporter"
+      ansible.builtin.unarchive:
+        src: https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
+        dest: /tmp/
+        remote_src: yes
+
+    - name: "Check if node_exporter executable already exists"
+      stat:
+        path: /usr/local/bin/node_exporter
+      register: node_exporter_exe
+
+    - name: "Move Node Exporter executable to correct location"
+      command: mv /tmp/node_exporter-1.3.1.linux-amd64/node_exporter /usr/local/bin/node_exporter
+      when: not node_exporter_exe.stat.exists
+
+    - name: "Update permissions for node_exporter"
+      file:
+        path: /usr/local/bin/node_exporter
+        owner: exporter
+        group: exporter
+        mode: '0777'
+      when: not node_exporter_exe.stat.exists
+
+    - name: "Check if Node Exporter service already exists"
+      stat:
+        path: /etc/systemd/system/node_exporter.service
+      register: node_service
+
+    - name: "Copy Node Exporter service file"
+      template:
+        src: "files/node_exporter.service.j2"
+        dest: "/etc/systemd/system/node_exporter.service"
+      when: not node_service.stat.exists
+
+    - name: "Start and enable node_exporter.service"
+      ansible.builtin.service:
+        name: node_exporter
+        state: started
+        enabled: yes
+      when: not node_service.stat.exists
+
+    - name: "Update firewall to allow connections from the Panopticon server to this server"
+      community.general.ufw:
+        rule: allow
+        src: '137.184.43.210'
+        port: '9100'
+        proto: tcp
+
+    - name: "Remove Node Exporter temp files"
+      file:
+        path: /tmp/node_exporter-1.3.1.linux-amd64
+        state: absent
+
+# Promtail installation
+    - name: "Download Promtail"
+      ansible.builtin.unarchive:
+        src: https://github.com/grafana/loki/releases/download/v2.3.0/promtail-linux-amd64.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: "Check if Promtail executable already exists"
+      stat:
+        path: /usr/local/bin/promtail
+      register: promtail_exe
+
+    - name: "Move Promtail executable to correct location"
+      command: mv /tmp/promtail-linux-amd64 /usr/local/bin/promtail
+      when: not promtail_exe.stat.exists
+
+    - name: "Update permissions for promtail"
+      file:
+        path: /usr/local/bin/promtail
+        owner: exporter
+        group: exporter
+        mode: '0777'
+      when: not promtail_exe.stat.exists
+
+    - name: "Check if Promtail configuration file already exists"
+      stat:
+        path: /etc/metrics/promtail.yml
+      register: promtail_conf
+
+    - name: "Copy Promtail configuration file"
+      template:
+        src: "files/promtail.yml.j2"
+        dest: "/etc/metrics/promtail.yml"
+      when: not promtail_conf.stat.exists
+
+    - name: "Check if Promtail.service already exists"
+      stat:
+        path: /etc/systemd/system/promtail.service
+      register: promtail_service
+
+    - name: "Copy Promtail service file"
+      template:
+        src: "files/promtail.service.j2"
+        dest: "/etc/systemd/system/promtail.service"
+      when: not promtail_service.stat.exists
+
+    - name: "Start and enable promtail.service"
+      ansible.builtin.service:
+        name: promtail
+        state: started
+        enabled: yes
+      when: not promtail_service.stat.exists
+
+    - name: "Find Promtail temp files to remove"
+      find:
+        path: /tmp/
+        patterns: promtail-*
+      register: promtail_to_delete
+
+    - name: "Remove Promtail temporary files"
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ promtail_to_delete.files }}"
+
+# Restart UFW firewall
+    - name: "Restart firewall"
+      ansible.builtin.service:
+        name: ufw
+        state: restarted

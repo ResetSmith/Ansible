@@ -1,0 +1,15 @@
+---
+# This playbook was created using an external ansible add-on
+# The role was added using ansible-galaxy
+# More information about how it works can be found here - https://github.com/geerlingguy/ansible-role-certbot
+
+# For our purposes this playbook just runs the certbot role
+# If you need to make any changes to the way it works you need to edit the 'ssl_info.yml' file in the secrets folder on bastion.casat.org
+
+- hosts: all
+  become: true
+  vars_files:
+    ../secrets/ssl_info.yml
+
+  roles:
+    - geerlingguy.certbot

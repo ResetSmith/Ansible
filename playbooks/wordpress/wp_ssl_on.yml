@@ -1,0 +1,53 @@
+---
+- hosts: all
+  become: true
+
+# This playbook will enable SSL/HTTPS on our WordPress websites
+# Prior to running this playbook you should run the ssl_get.yml playbook and obtain a SSL certificate
+
+  tasks:
+# Checks if the wordpress-ssl.conf file already exists
+# If it does then the next step is skipped 
+    - name: Check if an SSL Virtual Host file already exists
+      stat:
+        path: /etc/apache2/sites-available/wordpress-ssl.conf
+      register: pre_check
+
+# Apache tasks
+    - name: Create a new Apache Virtual Host file for SSL
+      template:
+        src: files/apache-ssl.conf.j2
+        dest: /etc/apache2/sites-available/wordpress-ssl.conf
+# Comment out the line below if you want to force ansible to push a copy of the Virtual Host file
+      when: not pre_check.stat.exists
+
+    - name: Enable the SSL support module in Apache
+      apache2_module:
+        state: present
+        name: ssl
+
+    - name: Enable the new SSL site
+      shell: /usr/sbin/a2ensite wordpress-ssl.conf
+
+    - name: Disable the old HTTP site
+      shell: /usr/sbin/a2dissite wordpress.conf
+
+# UFW/Firewall tasks
+# Apache Full opens both ports 80 and 443
+    - name: Open both HTTP and HTTPS ports in the Firewall
+      ufw:
+        rule: allow
+        name: Apache Full
+        #port: 443
+        #proto: tcp
+
+# Restart affected services
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+
+    - name: Restart UFW
+      service:
+        name: ufw
+        state: restarted

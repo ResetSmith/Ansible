@@ -1,0 +1,203 @@
+---
+- hosts: all
+  become: true
+  vars_files:
+    - ../secrets/mysql_vars.yml
+
+  tasks:
+# Checks for server updates and runs them
+    - name: Updating apt repo and cache on all servers
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+
+    - name: Updating packages
+      apt: upgrade=dist force_apt_get=yes
+
+# Installs dependencies needed for WordPress: Apache, MySQL and PHP
+    - name: Installing Apache and PHP
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'apache2', 'python3-pymysql', 'php', 'php-mysql', 'libapache2-mod-php' ]
+# Installs PHP extensions needed for WordPress
+    - name: Installing PHP extensions
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-xmlrpc', 'php-soap', 'php-intl', 'php-zip', 'php-imagick' ]
+# Restarts the system prior to running the geerlingguy.mysql role
+    - name: Restarting system prior to running Geerlingguy.MySQL role
+      reboot:
+        connect_timeout: 5
+        reboot_timeout: 300
+        post_reboot_delay: 30
+        test_command: uptime
+# Uses the pre-created role by GeerlingGuy to install mysql
+# The role is installed by Ansible in the '/etc/ansible/galaxy.roles/' folder
+# Variables needed for this role are defined in '/etc/ansible/playbooks/secrets/mysql_vars.yml'
+    - name: Using geerlingguy.mysql role to install and configure mysql
+      include_role:
+        name: geerlingguy.mysql
+
+# Apache Configuration
+# Creates Apache VirtualHost file, using the ansible hostname
+# The ansible hostname is determined automatically from the server's hostname
+# The server's hostname is set during creation in DigitalOcean or by using the 'hostnamectl' command on the server prior to running this playbook
+    - name: Creating the Apache VirtualHost file
+      template:
+        src: "files/apache.conf.j2"
+        dest: /etc/apache2/sites-available/wordpress.conf
+      notify: Reload Apache
+# Enables the Apache rewrite module, necessary for WordPress
+    - name: Enabling the Apache rewrite module
+      shell: /usr/sbin/a2enmod rewrite
+      notify: Reload Apache
+# Enables the new Apache VirtualHost file and disables the default one
+    - name: Enabling the new site in Apache
+      shell: /usr/sbin/a2ensite wordpress.conf
+      notify: Reload Apache
+
+    - name: Disabling the default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      notify: Restart Apache
+
+# Adds Apache connections to the list for Fail2Ban to monitor
+    - name: Adding Apache connections to Fail2Ban firewall monitoring list
+      blockinfile:
+        path: /etc/fail2ban/jail.local
+        block: |
+          # Apache jail
+          #
+          [apache]
+          enabled   = true
+          port      = http,https
+          filter    = apache-auth
+          logpath   = /var/log/apache*/*error.log
+          maxretry  = 3
+
+          [apache-overflows]
+          enabled   = true
+          filter    = apache-overflows
+          logpath   = /var/log/apache*/*error.log
+
+          [apache-badbots]
+          enabled   = true
+          filter    = apache-badbots
+          logpath   = /var/log/apache*/*access.log
+      notify: Restart Fail2ban
+
+# Install WordPress
+# Creates WordPress root folder and assigns the correct permissions
+    - name: Creating the WordPress root directory
+      file:
+        path: /var/www/wordpress
+        state: directory
+        owner: "www-data"
+        group: "www-data"
+        mode: '0755'
+
+# Downloads WordPress and installs the files to the wordpress root directory
+    - name: Downloading and unpacking the latest version of WordPress
+      unarchive:
+        src: https://wordpress.org/latest.tar.gz
+        dest: /var/www/
+        remote_src: yes
+# If you get an error for downloading too often, comment preceeding section out
+
+    - name: Copy WordPress installation file to remote and un-compress
+      unarchive:
+        src: /tmp/latest.tar.gz
+        dest: /var/www/
+
+# Copies the 'wp-config.php' and '.htaccess' files to the wordpress root directory
+# Variables used in the wp-config.php file are pulled from /secrets/mysql_vars.yml
+#
+# The first task checks if there is an existing wp-config.php file for idempotent purposes
+# If there is an existing file then no changes are made
+    - name: Checking there is no existing wp-config.php file
+      stat:
+        path: /var/www/wordpress/wp-config.php
+      register: config_check
+
+    - name: Copying updated wp-config.php from file
+      template:
+        src: "files/wp-config.php.j2"
+        dest: /var/www/wordpress/wp-config.php
+      when: not config_check.stat.exists
+
+    - name: Updating the MySQL database reference in wp-config.php
+      replace:
+        path: /var/www/wordpress/wp-config.php
+        regexp: 'MYSQL_DBNAME'
+        replace: "{{ item.name }}"
+      with_items: "{{ mysql_databases }}"
+      when: not config_check.stat.exists
+
+    - name: Updating the MySQL user name in wp-config.php
+      replace:
+        path: /var/www/wordpress/wp-config.php
+        regexp: 'MYSQL_UNAME'
+        replace: "{{ item.name }}"
+      with_items: "{{ mysql_users }}"
+      when: not config_check.stat.exists
+
+    - name: Updating the MySQL user password in wp-config.php
+      replace:
+        path: /var/www/wordpress/wp-config.php
+        regexp: 'MYSQL_PASS'
+        replace: "{{ item.password }}"
+      with_items: "{{ mysql_users }}"
+      when: not config_check.stat.exists
+# Copies .htaccess
+    - name: Copy .htaccess from file
+      template:
+        src: "files/htaccess.j2"
+        dest: /var/www/wordpress/.htaccess
+
+# Updates ownership and permissions for the WordPress files and directories
+    - name: Setting ownership of the WordPress directory
+      file:
+        path: /var/www/wordpress
+        state: directory
+        recurse: yes
+        owner: www-data
+        group: www-data
+
+    - name: Correcting permissions for wordpress directories
+      shell: "/usr/bin/find /var/www/wordpress/ -type d -exec chmod 755 {} \\;"
+
+    - name: Correcting permissions for wordpress files
+      shell: "/usr/bin/find /var/www/wordpress/ -type f -exec chmod 644 {} \\;"
+
+# UFW Configuration
+# Opens up the necessary port on the firewall to allow HTTP traffic in
+    - name: Opening port 80(HTTP) and 443(HTTPS) on firewall to allow web traffic
+      ufw:
+        rule: allow
+        name: Apache Full
+
+# Installs wp-cli tool
+# This is an addon which helps manage Wordpress from the terminal
+    - name: Checking to see if the wp-cli tool is already installed
+      stat:
+        path: /usr/local/bin/wp
+      register: wp_cli_check
+
+    - name: Downloading and installing the wp-cli tool
+      get_url:
+        url: https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+        dest: /usr/local/bin/wp
+        mode: '755'
+      when: not wp_cli_check.stat.exists
+
+# Restarts Apache and Fail2ban services to pull changes
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+
+    - name: Restart Fail2ban
+      service:
+        name: fail2ban
+        state: restarted

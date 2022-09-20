@@ -1,0 +1,4 @@
+# Custom prompt for Root user
+# Sets text to green, shows full hostname, shows the time
+# Moves working prompt to second line and displays current directory
+export PS1="\[$(tput bold)\]\[\033[38;5;10m\]\u\[$(tput sgr0)\] @\[$(tput sgr0)\]\[$(tput bold)\]\[\033[38;5;10m\]\H\[$(tput sgr0)\] \A\n[\[$(tput sgr0)\]\[\033[38;5;10m\]\w\[$(tput sgr0)\]] \\$ \[$(tput sgr0)\]"

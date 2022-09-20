@@ -1,0 +1,41 @@
+---
+- hosts: all
+  become: true
+
+# This playbook will disable SSL/HTTPS on our WordPress websites
+
+  tasks:
+# Apache tasks
+    - name: Enable the HTTP Virtual Host
+      shell: "/usr/sbin/a2ensite wordpress.conf"
+
+    - name: Disable the HTTPS Virtual Host
+      shell: "/usr/sbin/a2dissite wordpress-ssl.conf"
+
+    - name: Disable the SSL support module in Apache
+      apache2_module:
+        state: absent
+        name: ssl
+
+# UFW/Firewall tasks
+# Apache Full opens both ports 80 and 443
+    - name: Disallow HTTPS connections in the Firewall
+      ufw:
+        rule: deny
+        name: Apache Full
+
+    - name: Make sure HTTP ports are open in the Firewall
+      ufw:
+        rule: allow
+        name: Apache
+
+# Restart affected services
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+      
+    - name: Restart Firewall
+      service:
+        name: ufw
+        state: restarted

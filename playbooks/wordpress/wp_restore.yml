@@ -1,0 +1,52 @@
+---
+- hosts: all
+  vars_files:
+    - ../secrets/wp_clone.yml
+
+  tasks:
+  # Copies file from the backup storage on the local Ansible server to the target server
+    - name: Copy file from storage
+      become: true
+      synchronize:
+        mode: push
+        src: "/var/wp_backups/{{ server_name }}/{{ backup_file }}.tar.gz"
+        dest: /tmp/
+# Opens the .tar.gz file
+    - name: Un-compress backup file
+      unarchive:
+        src: "/tmp/{{ backup_file }}.tar.gz"
+        remote_src: true
+        dest: /tmp/
+# Deletes existing wp-content folder prior to replacing it
+    - name: Remove existing wp-content folder
+      become: true
+      file:
+        path: /var/www/wordpress/wp-content
+        state: absent
+# Copies backed up wp-content folder to the target server
+    - name: Import backup wp-content folder
+      become: true
+      copy:
+        src: "/tmp/{{ server_name }}/wp-content"
+        remote_src: true
+        dest: /var/www/wordpress/
+# Overwrites the existing WordPress database on the target server
+    - name: Import backup MySQL database
+      become: true
+      mysql_db:
+        name: wordpress
+        state: import
+        target: "/tmp/{{ server_name }}/backup.sql"
+# Updates permissions for WordPress files on the target server
+    - name: Set permissions for WordPress directories to 755
+      become: true
+      shell: "/usr/bin/find /var/www/wordpress/ -type d -exec chmod 755 {} \\;"
+
+    - name: Set permissions for WordPress files to 644
+      become: true
+      shell: "/usr/bin/find /var/www/wordpress/ -type f -exec chmod 644 {} \\;"
+
+    - name: Set owner of WordPress files to www-data (Apache user)
+      become: true
+      shell: "sudo chown -R www-data:www-data /var/www/wordpress"
+

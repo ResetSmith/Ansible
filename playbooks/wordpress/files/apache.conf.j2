@@ -1,0 +1,20 @@
+<VirtualHost *:80>
+  ServerAdmin  webmaster@casat.org
+  ServerName   {{ ansible_host }}
+  ServerAlias  www.{{ ansible_host }}
+  DocumentRoot /var/www/wordpress
+
+  <Directory /var/www/wordpress/>
+   Options FollowSymLinks
+   AllowOverride All
+   Require all granted
+  </Directory>
+
+  <IfModule mod_dir.c>
+   DirectoryIndex index.php index.html index.cgi index.pl  index.xhtml index.htm
+  </IfModule>
+
+
+ErrorLog  ${APACHE_LOG_DIR}/error.log
+CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>

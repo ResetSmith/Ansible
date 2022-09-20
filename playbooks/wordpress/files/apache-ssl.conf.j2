@@ -1,0 +1,29 @@
+<VirtualHost *:80>
+  ServerName  {{ ansible_host }}
+  ServerAlias www.{{ ansible_host }}
+  Redirect permanent / https://{{ ansible_host }}/
+</VirtualHost>
+
+<VirtualHost *:443>
+  Protocols h2 http/1.1
+  ServerAdmin  webmaster@casat.org
+  DocumentRoot /var/www/wordpress
+  ServerName   {{ ansible_host }}
+  ServerAlias  www.{{ ansible_host }}
+  SSLEngine on
+  SSLCertificateFile    /etc/letsencrypt/live/{{ ansible_host }}/fullchain.pem
+  SSLCertificateKeyFile /etc/letsencrypt/live/{{ ansible_host }}/privkey.pem
+
+    <Directory /var/www/wordpress/>
+      Options FollowSymLinks
+      AllowOverride All
+      Require all granted
+    </Directory>
+
+    <IfModule mod_dir.c>
+     DirectoryIndex index.php index.html index.cgi index.pl  index.xhtml index.htm
+    </IfModule>
+
+ErrorLog  ${APACHE_LOG_DIR}/error.log
+CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>

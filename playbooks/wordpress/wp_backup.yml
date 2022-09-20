@@ -1,0 +1,100 @@
+---
+- hosts: all
+  vars_files: 
+    - ../secrets/secrets.yml
+# For this playbook to work you will need to have:
+# 1. Wordpress installed at /var/www/wordpress
+# 2. A MySQL DB named 'wordpress'
+# 3. A secrets file with the password for the Wordpress MySQL root account defined
+
+  tasks:
+# Check if the server is a WordPress website
+# Will skip rest of playbook if the server is not a Wordpress host
+    - name: Check if server is a WordPress host
+      stat:
+        path: /var/www/wordpress
+      register: wp_check
+
+# Prerequisites
+    - name: Get server hostname to create backup folder
+      set_fact:
+        hostname_tmp: "{{ ansible_host }}"
+      when: wp_check.stat.exists
+        
+    - name: Create /var/backups/.. if it does not already exist
+      become: true
+      delegate_to: localhost
+      file:
+        path: "/var/wp_backups/{{ hostname_tmp }}"
+        state: directory
+        mode: u=rwx,g=rwx,o=rwx
+      when: wp_check.stat.exists
+
+# Backup process
+    - name: Create temporary folder for backups on source
+      become: true
+      file:
+        path: "/tmp/{{ ansible_host }}"
+        state: directory
+        mode: '0755'
+      when: wp_check.stat.exists
+
+    - name: Copy remote Wordpress wp-content folder to backup folder
+      become: true
+      copy:
+        src: /var/www/wordpress/wp-content
+        dest: "/tmp/{{ ansible_host }}"
+        mode: u=rwx,g=rw,o=rw
+        remote_src: true
+      when: wp_check.stat.exists
+
+    - name: Perform a MySQL dump to make a copy of the database
+      become: true
+      mysql_db:
+        name: wordpress
+        state: dump
+        login_user: root
+        login_password: "{{ mysql_root_pw }}"
+        target: "/tmp/{{ ansible_host }}/backup.sql"
+      when: wp_check.stat.exists
+
+    - name: Compressing backup directory
+      become: true
+      archive:
+        path: "/tmp/{{ ansible_host }}"
+        dest: "/tmp/{{ ansible_date_time.date }}.tar.gz"
+      when: wp_check.stat.exists
+
+    - name: Pulling remote backup files to local storage in /var/wp_backups/...
+      become: true
+      synchronize:
+        mode: pull
+        src: "/tmp/{{ansible_date_time.date }}.tar.gz"
+        dest: "/var/wp_backups/{{ ansible_host }}/"
+      when: wp_check.stat.exists
+
+# Cleanup actions
+    - name: Cleaning up leftover /tmp/... backup files on servers
+      become: true
+      shell: rm -rf /tmp/{{ ansible_date_time.date }}.tar.gz ; rm -rf /tmp/{{ ansible_host }}
+      args:
+        warn: false
+      when: wp_check.stat.exists
+
+    - name: Check backup folders for files older than 30 days
+      find:
+        paths: "/var/wp_backups/{{ hostname_tmp }}"
+        age: 30d
+        recurse: yes
+      delegate_to: localhost
+      register: filesolderthan30
+      when: wp_check.stat.exists
+
+    - name: Removing backup files older than 30 days
+      become: true
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      delegate_to: localhost
+      with_items: "{{ filesolderthan30.files }}"
+      when: wp_check.stat.exists

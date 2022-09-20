@@ -1,0 +1,36 @@
+---
+- hosts: all
+  vars_files:
+    - ../secrets/wp_clone.yml
+# This playbook combines the wp_restore and wp_url playbooks together to handle the copying of one WordPress website to another blank WordPress website
+# Prior to running this playbook:
+# 1. Create a blank WordPress website using our Ansible playbook
+# 2. Run the wp_backup.yml playbook on the website you are wishing to copy
+
+  tasks:
+# These are warning messages to remind the user to double check what they are doing prior to running this playbook
+    - name: Warning message
+      debug:
+        msg: 
+          - 'Reminder, this playbook should only be run on a single target at a time.' 
+          - 'If you are seeing this message multiple times then you ran this playbook on more than one server'
+          - "Press 'Ctrl+C' now to stop, and rerun the playbook with a '--limit' flag"
+
+    - name: Review settings prior to playbook start
+      debug:
+        msg:
+          - "This playbook will clone a WordPress website based on the following settings:"
+          - "Backup file copied from: /var/wp_backups/{{ server_name }}/{{ backup_file }}.tar.gz"
+          - "Website URL will be updated from: {{ old_url }}, to: {{ new_url }}"
+          
+# This creates a 30 second pause before starting the playbook for the user to check their settings
+    - name: Pause for review
+      pause:
+        prompt: "If any of these settings need to be updated, press 'Ctrl+C' now. Otherwise, this playbook will continue in 30 seconds"
+        seconds: 30
+
+# Runs both of the wp_restore and wp_url playbooks
+# The wp_restore playbook will pull a copy of a website from the storage on the Ansible server and copies the data to the target server
+- import_playbook: wp_restore.yml
+# The wp_url playbook will update the url in the MySQL database, this is necessary when copying data from one WordPress site to another
+- import_playbook: wp_url.yml

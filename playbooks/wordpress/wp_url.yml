@@ -1,0 +1,16 @@
+---
+- hosts: all
+  vars_files:
+    - ../secrets/wp_clone.yml
+    
+  tasks:
+    - name: Use wp-cli tool to update URL in the MySQL database
+      become: true
+      become_user: ansible
+      shell:
+        cmd: "wp search-replace '{{ old_url }}' '{{ new_url}}' --path='/var/www/wordpress'"
+      register: url_update_result
+
+    - name: Display results from wp-cli
+      debug:
+        msg: "{{ url_update_result.stdout }}"
