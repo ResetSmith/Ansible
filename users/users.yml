@@ -45,6 +45,7 @@
         mode: 0644
       with_items: "{{ user_details }}"
 # Allows the ansible user to sudo without a password
+# Comment this section out if you are not using the Ansible system user
     - name: "Allow ansible user to sudo without password"
       lineinfile:
         dest: "/etc/sudoers"
