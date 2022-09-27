@@ -1,0 +1,22 @@
+---
+# These are the settings and variables for the 'ssl_get.yml' playbook. You should edit this file instead of making changes directly to the 'ssl_get.yml' playbook.
+
+certbot_certs:
+# Any domain listed must follow the same format '- domain.com' OR '- www.domain.org' the hash should start on the 7th column. It is possible to use this tool to get many certificates at a time, but only for websites hosted on the same server
+  - domains:
+      - resettech.net
+    webroot: "/var/www/wordpress"
+# Change to true/false to enable/disable testmode
+certbot_testmode: true
+certbot_admin_email: Reset_Smith@resettech.net
+certbot_create_if_missing: true
+certbot_create_method: standalone
+# Can change 'apache2' to 'nginx' if necessary
+certbot_create_standalone_stop_services:
+  - apache2
+
+# Below are the settings for the certbot autorenew feature
+certbot_auto_renew: true
+certbot_auto_renew_user: ansible
+certbot_auto_renew_hour: "4"
+certbot_auto_renew_minute: "30"
