@@ -57,7 +57,15 @@
       notify: Restart Apache
 
 # Adds Apache connections to the list for Fail2Ban to monitor
+# This task checks for a Fail2Ban installation in the default location
+    - name: Checks for Fail2Ban installation
+      stat:
+        path: /usr/bin/fail2ban-client
+      register: f2b_check
+
+# The following task is skipped if no Fail2Ban installation is found
     - name: Adding Apache connections to Fail2Ban firewall monitoring list
+      when: f2b_check.stat.exists
       blockinfile:
         path: /etc/fail2ban/jail.local
         block: |
@@ -82,8 +90,15 @@
       notify: Restart Fail2ban
 
 # Install WordPress
+# If an existing WordPress installation is found at /var/www/wordpress then the next several tasks are skipped
+    - name: Checks for existing WordPress installation
+      stat:
+        path: /var/www/wordpress
+      register: wp_check
+
 # Creates WordPress root folder and assigns the correct permissions
     - name: Creating the WordPress root directory
+      when: not wp_check.stat.exists
       file:
         path: /var/www/wordpress
         state: directory
@@ -93,64 +108,53 @@
 
 # Downloads WordPress and installs the files to the wordpress root directory
     - name: Downloading and unpacking the latest version of WordPress
+      when: not wp_check.stat.exists
       unarchive:
         src: https://wordpress.org/latest.tar.gz
         dest: /var/www/
         remote_src: yes
-# If you get an error for downloading too often, comment preceeding section out
-
-    - name: Copy WordPress installation file to remote and un-compress
-      unarchive:
-        src: /tmp/latest.tar.gz
-        dest: /var/www/
 
 # Copies the 'wp-config.php' and '.htaccess' files to the wordpress root directory
 # Variables used in the wp-config.php file are pulled from /secrets/mysql_vars.yml
-#
-# The first task checks if there is an existing wp-config.php file for idempotent purposes
-# If there is an existing file then no changes are made
-    - name: Checking there is no existing wp-config.php file
-      stat:
-        path: /var/www/wordpress/wp-config.php
-      register: config_check
-
     - name: Copying updated wp-config.php from file
+      when: not wp_check.stat.exists
       template:
         src: "files/wp-config.php.j2"
         dest: /var/www/wordpress/wp-config.php
-      when: not config_check.stat.exists
 
     - name: Updating the MySQL database reference in wp-config.php
+      when: not wp_check.stat.exists    
       replace:
         path: /var/www/wordpress/wp-config.php
         regexp: 'MYSQL_DBNAME'
         replace: "{{ item.name }}"
       with_items: "{{ mysql_databases }}"
-      when: not config_check.stat.exists
 
     - name: Updating the MySQL user name in wp-config.php
+      when: not wp_check.stat.exists      
       replace:
         path: /var/www/wordpress/wp-config.php
         regexp: 'MYSQL_UNAME'
         replace: "{{ item.name }}"
       with_items: "{{ mysql_users }}"
-      when: not config_check.stat.exists
 
     - name: Updating the MySQL user password in wp-config.php
+      when: not wp_check.stat.exists       
       replace:
         path: /var/www/wordpress/wp-config.php
         regexp: 'MYSQL_PASS'
         replace: "{{ item.password }}"
       with_items: "{{ mysql_users }}"
-      when: not config_check.stat.exists
 # Copies .htaccess
     - name: Copy .htaccess from file
+      when: not wp_check.stat.exists
       template:
         src: "files/htaccess.j2"
         dest: /var/www/wordpress/.htaccess
 
 # Updates ownership and permissions for the WordPress files and directories
     - name: Setting ownership of the WordPress directory
+      when: not wp_check.stat.exists
       file:
         path: /var/www/wordpress
         state: directory
@@ -159,9 +163,11 @@
         group: www-data
 
     - name: Correcting permissions for wordpress directories
+      when: not wp_check.stat.exists
       shell: "/usr/bin/find /var/www/wordpress/ -type d -exec chmod 755 {} \\;"
 
     - name: Correcting permissions for wordpress files
+      when: not wp_check.stat.exists
       shell: "/usr/bin/find /var/www/wordpress/ -type f -exec chmod 644 {} \\;"
 
 # UFW Configuration
@@ -179,11 +185,11 @@
       register: wp_cli_check
 
     - name: Downloading and installing the wp-cli tool
+      when: not wp_cli_check.stat.exists      
       get_url:
         url: https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
         dest: /usr/local/bin/wp
         mode: '755'
-      when: not wp_cli_check.stat.exists
 
 # Restarts Apache and Fail2ban services to pull changes
   handlers:
